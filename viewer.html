@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Hue Lab — Device Viewer</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #111113;
+    color: #e4e4e7;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Toolbar ── */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 20px;
+    background: #18181b;
+    border-bottom: 1px solid #27272a;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+
+  .toolbar-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #a1a1aa;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-right: 8px;
+  }
+
+  .device-btn {
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: 1px solid #3f3f46;
+    background: #27272a;
+    color: #d4d4d8;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .device-btn:hover { background: #3f3f46; }
+  .device-btn.active { background: #fafafa; color: #09090b; border-color: #fafafa; }
+
+  .device-icon { font-size: 15px; line-height: 1; }
+
+  .separator {
+    width: 1px;
+    height: 24px;
+    background: #3f3f46;
+    flex-shrink: 0;
+  }
+
+  .size-label {
+    font-size: 11px;
+    color: #71717a;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    min-width: 90px;
+  }
+
+  .url-input {
+    margin-left: auto;
+    padding: 5px 10px;
+    border-radius: 6px;
+    border: 1px solid #3f3f46;
+    background: #09090b;
+    color: #d4d4d8;
+    font-size: 11px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    width: 240px;
+    outline: none;
+  }
+  .url-input:focus { border-color: #60a5fa; }
+
+  .reload-btn {
+    padding: 5px 10px;
+    border-radius: 6px;
+    border: 1px solid #3f3f46;
+    background: #27272a;
+    color: #d4d4d8;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+    line-height: 1;
+  }
+  .reload-btn:hover { background: #3f3f46; }
+
+  /* ── Viewport ── */
+  .viewport-area {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    overflow: auto;
+    background:
+      radial-gradient(circle at 1px 1px, #27272a 1px, transparent 0) 0 0 / 20px 20px;
+  }
+
+  .device-frame {
+    background: #09090b;
+    border: 2px solid #3f3f46;
+    border-radius: 12px;
+    overflow: hidden;
+    transition: width 0.35s ease, height 0.35s ease;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .device-frame.phone {
+    border-radius: 28px;
+    border-width: 3px;
+  }
+
+  .device-frame.phone::before {
+    content: '';
+    display: block;
+    width: 80px;
+    height: 4px;
+    background: #3f3f46;
+    border-radius: 2px;
+    margin: 8px auto 4px;
+    flex-shrink: 0;
+  }
+
+  .device-frame.phone::after {
+    content: '';
+    display: block;
+    width: 40px;
+    height: 4px;
+    background: #3f3f46;
+    border-radius: 2px;
+    margin: 4px auto 8px;
+    flex-shrink: 0;
+  }
+
+  .device-frame iframe {
+    flex: 1;
+    width: 100%;
+    border: none;
+    background: #09090b;
+  }
+
+  /* ── Rotate indicator ── */
+  .rotate-btn {
+    padding: 5px 10px;
+    border-radius: 6px;
+    border: 1px solid #3f3f46;
+    background: #27272a;
+    color: #d4d4d8;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .rotate-btn:hover { background: #3f3f46; }
+
+  /* ── Info bar ── */
+  .info-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 8px 20px;
+    background: #18181b;
+    border-top: 1px solid #27272a;
+    font-size: 11px;
+    color: #71717a;
+    flex-shrink: 0;
+  }
+  .info-bar a { color: #60a5fa; text-decoration: none; }
+  .info-bar a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <span class="toolbar-title">Device Viewer</span>
+
+  <button class="device-btn active" data-device="desktop" onclick="setDevice('desktop')">
+    <span class="device-icon">&#9633;</span> Desktop
+  </button>
+  <button class="device-btn" data-device="laptop" onclick="setDevice('laptop')">
+    <span class="device-icon">&#9634;</span> Laptop
+  </button>
+  <button class="device-btn" data-device="tablet" onclick="setDevice('tablet')">
+    <span class="device-icon">&#9645;</span> Tablet
+  </button>
+  <button class="device-btn" data-device="phone" onclick="setDevice('phone')">
+    <span class="device-icon">&#9642;</span> Phone
+  </button>
+
+  <div class="separator"></div>
+
+  <span class="size-label" id="sizeLabel">1440 × 900</span>
+
+  <button class="rotate-btn" onclick="rotateDevice()" title="Rotate device">&#8634; Rotate</button>
+
+  <div class="separator"></div>
+
+  <input class="url-input" id="urlInput" type="text" value="http://localhost:3000" spellcheck="false" />
+  <button class="reload-btn" onclick="reloadFrame()" title="Reload">&#8635;</button>
+</div>
+
+<div class="viewport-area">
+  <div class="device-frame" id="deviceFrame">
+    <iframe id="appFrame" src="http://localhost:3000"></iframe>
+  </div>
+</div>
+
+<div class="info-bar">
+  <span>Hue Lab Device Viewer</span>
+  <span>|</span>
+  <span>Start app: <code>npm run dev</code></span>
+  <span>|</span>
+  <span>Or production: <code>npm run build && npm run preview</code></span>
+</div>
+
+<script>
+  const devices = {
+    desktop: { w: 1440, h: 900,  phone: false },
+    laptop:  { w: 1024, h: 768,  phone: false },
+    tablet:  { w: 768,  h: 1024, phone: false },
+    phone:   { w: 390,  h: 844,  phone: true  },
+  };
+
+  let current = 'desktop';
+  let rotated = false;
+
+  function setDevice(name) {
+    current = name;
+    rotated = false;
+    applyDevice();
+
+    document.querySelectorAll('.device-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.device === name);
+    });
+  }
+
+  function rotateDevice() {
+    rotated = !rotated;
+    applyDevice();
+  }
+
+  function applyDevice() {
+    const d = devices[current];
+    const frame = document.getElementById('deviceFrame');
+    const label = document.getElementById('sizeLabel');
+
+    let w = rotated ? d.h : d.w;
+    let h = rotated ? d.w : d.h;
+
+    // Fit within available viewport area
+    const area = document.querySelector('.viewport-area');
+    const maxW = area.clientWidth - 40;
+    const maxH = area.clientHeight - 40;
+
+    // For phone/tablet, show at natural size if it fits; scale down if not
+    const frameExtra = d.phone ? 28 : 4; // bezel padding
+    const displayW = Math.min(w + frameExtra, maxW);
+    const displayH = Math.min(h + frameExtra, maxH);
+
+    frame.style.width = displayW + 'px';
+    frame.style.height = displayH + 'px';
+    frame.className = 'device-frame' + (d.phone ? ' phone' : '');
+
+    label.textContent = w + ' \u00d7 ' + h;
+  }
+
+  function reloadFrame() {
+    const input = document.getElementById('urlInput');
+    const frame = document.getElementById('appFrame');
+    frame.src = input.value;
+  }
+
+  // Apply URL on Enter
+  document.getElementById('urlInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') reloadFrame();
+  });
+
+  // Responsive on window resize
+  window.addEventListener('resize', () => applyDevice());
+
+  // Initial sizing after layout
+  requestAnimationFrame(() => applyDevice());
+</script>
+
+</body>
+</html>
