@@ -131,14 +131,6 @@ function isApproxInCmykGamut(r, g, b) {
   return Math.max(dr, dg, db) <= 2
 }
 
-function cmykGamutDistance(r, g, b) {
-  const cmyk = rgbToCmyk(r, g, b)
-  const back = cmykToRgb(cmyk.c, cmyk.m, cmyk.y, cmyk.k)
-  const lab1 = rgbToOklab(r, g, b)
-  const lab2 = rgbToOklab(back.r, back.g, back.b)
-  return deltaE(lab1, lab2)
-}
-
 // ============================================================================
 // CONTRAST & LUMINANCE (WCAG 2.x)
 // ============================================================================
@@ -283,6 +275,63 @@ function simulateColorBlindness(r, g, b, type) {
 }
 
 // ============================================================================
+// CHEESY COLOR NAME GENERATOR
+// ============================================================================
+
+const COLOR_NAMES = {
+  red:     ['Salsa Picante', 'Tomato Tango', 'Crimson Kiss', 'Ruby Slipper', 'Hot Tamale', 'Firecracker'],
+  orange:  ['Sunset Boulevard', 'Tangerine Dream', 'Marmalade Sky', 'Pumpkin Spice', 'Mango Tango', 'Papaya Whip'],
+  yellow:  ['Lemon Drop', 'Banana Pudding', 'Goldilocks', 'Dandelion Wine', 'Buttercup Bliss', 'Taxi Cab'],
+  lime:    ['Avocado Toast', 'Pistachio Dream', 'Kermit Couture', 'Wasabi Rush', 'Chartreuse Moose', 'Lime Rickey'],
+  green:   ['Jungle Boogie', 'Shamrock Shake', 'Mint Julep', 'Pickle Juice', 'Emerald City', 'Forest Bathing'],
+  teal:    ['Ocean Breeze', 'Tidal Pool', 'Mermaid Tears', 'Lagoon Vibes', 'Tropical Chill', 'Sea Glass'],
+  cyan:    ['Arctic Chill', 'Frozen Daiquiri', 'Ice Palace', 'Glacier Mint', 'Polar Express', 'Cool Runnings'],
+  blue:    ['Midnight Jazz', 'Denim Dreams', 'Blueberry Muffin', 'Royal Decree', 'Deep Blue Sea', 'Blue Monday'],
+  indigo:  ['Twilight Zone', 'Velvet Underground', 'Indigo Montoya', 'Cosmic Latte', 'Nebula Nights', 'Ink Well'],
+  violet:  ['Grape Escape', 'Purple Rain', 'Plum Crazy', 'Velvet Rope', 'Amethyst Hour', 'Majestic AF'],
+  magenta: ['Flamingo Dance', 'Fuchsia Fusion', 'Hot Gossip', 'Disco Inferno', 'Dragonfruit', 'Pink Panther'],
+  rose:    ['Bubblegum Pop', 'Cherry Bomb', 'Candy Apple', 'Rose Parade', 'Blushing Bride', 'Cupid Arrow'],
+}
+
+const LIGHT_PREFIXES = ['Baby', 'Cotton', 'Pastel', 'Cloud', 'Whisper']
+const DARK_PREFIXES = ['Deep', 'Midnight', 'Shadow', 'Dark', 'Obsidian']
+const MUTED_PREFIXES = ['Dusty', 'Muted', 'Faded', 'Hazy', 'Foggy']
+
+function generateColorName(h, s, l) {
+  h = ((h % 360) + 360) % 360
+  let family
+  if (h < 15) family = 'red'
+  else if (h < 40) family = 'orange'
+  else if (h < 65) family = 'yellow'
+  else if (h < 90) family = 'lime'
+  else if (h < 150) family = 'green'
+  else if (h < 175) family = 'teal'
+  else if (h < 200) family = 'cyan'
+  else if (h < 245) family = 'blue'
+  else if (h < 270) family = 'indigo'
+  else if (h < 300) family = 'violet'
+  else if (h < 335) family = 'magenta'
+  else family = 'rose'
+
+  const names = COLOR_NAMES[family]
+  const idx = Math.floor((h * 7 + s * 3 + l) % names.length)
+  let name = names[idx]
+
+  if (l > 80) {
+    const pi = Math.floor((h + l) % LIGHT_PREFIXES.length)
+    name = LIGHT_PREFIXES[pi] + ' ' + name.split(' ')[name.split(' ').length - 1]
+  } else if (l < 25) {
+    const pi = Math.floor((h + l) % DARK_PREFIXES.length)
+    name = DARK_PREFIXES[pi] + ' ' + name.split(' ')[name.split(' ').length - 1]
+  } else if (s < 20) {
+    const pi = Math.floor((h + s) % MUTED_PREFIXES.length)
+    name = MUTED_PREFIXES[pi] + ' ' + name.split(' ')[name.split(' ').length - 1]
+  }
+
+  return name
+}
+
+// ============================================================================
 // STATE PERSISTENCE (URL hash)
 // ============================================================================
 
@@ -295,6 +344,8 @@ function stateToHash(state) {
     cl: state.contrastLocks,
     ov: state.colorOverrides,
     ul: state.unlinkedColors,
+    co: state.colorOrder,
+    cn: state.colorNames,
   }
   try {
     return '#' + btoa(JSON.stringify(compact))
@@ -313,307 +364,395 @@ function hashToState(hash) {
 }
 
 // ============================================================================
-// STYLES
+// HOOKS
 // ============================================================================
 
-const STYLES = {
-  app: {
-    minHeight: '100vh',
-    background: '#09090b',
-    color: '#fafafa',
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-  },
-  header: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '16px 24px',
-    borderBottom: '1px solid #27272a',
-    background: '#09090b',
-    position: 'sticky',
-    top: 0,
-    zIndex: 100,
-  },
-  logo: {
-    fontSize: 20,
-    fontWeight: 700,
-    letterSpacing: '-0.02em',
-  },
-  headerActions: {
-    display: 'flex',
-    gap: 8,
-    alignItems: 'center',
-  },
-  main: {
-    display: 'grid',
-    gridTemplateColumns: '300px 1fr',
-    minHeight: 'calc(100vh - 57px)',
-  },
-  sidebar: {
-    borderRight: '1px solid #27272a',
-    padding: '20px',
-    overflowY: 'auto',
-    maxHeight: 'calc(100vh - 57px)',
-  },
-  content: {
-    padding: '24px',
-    overflowY: 'auto',
-    maxHeight: 'calc(100vh - 57px)',
-  },
-  section: {
-    marginBottom: 28,
-  },
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: 600,
-    textTransform: 'uppercase',
-    letterSpacing: '0.08em',
-    color: '#a1a1aa',
-    marginBottom: 12,
-  },
-  sliderGroup: {
-    marginBottom: 14,
-  },
-  sliderLabel: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    fontSize: 12,
-    color: '#a1a1aa',
-    marginBottom: 4,
-  },
-  slider: {
-    width: '100%',
-    height: 6,
-    borderRadius: 3,
-    appearance: 'none',
-    outline: 'none',
-    cursor: 'pointer',
-    background: '#27272a',
-  },
-  btn: {
-    padding: '6px 12px',
-    borderRadius: 6,
-    border: '1px solid #3f3f46',
-    background: '#18181b',
-    color: '#fafafa',
-    fontSize: 12,
-    cursor: 'pointer',
-    transition: 'all 0.15s',
-    fontFamily: 'inherit',
-  },
-  btnActive: {
-    background: '#fafafa',
-    color: '#09090b',
-    borderColor: '#fafafa',
-  },
-  btnSmall: {
-    padding: '4px 8px',
-    fontSize: 11,
-  },
-  radioGroup: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 4,
-  },
-  radioOption: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    padding: '6px 8px',
-    borderRadius: 6,
-    cursor: 'pointer',
-    fontSize: 13,
-    transition: 'background 0.15s',
-  },
-  colorPreview: {
-    width: '100%',
-    height: 80,
-    borderRadius: 10,
-    marginBottom: 16,
-    border: '1px solid #27272a',
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  scaleRow: {
-    marginBottom: 20,
-  },
-  scaleLabel: {
-    fontSize: 13,
-    fontWeight: 500,
-    marginBottom: 6,
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-  },
-  scaleSwatches: {
-    display: 'flex',
-    borderRadius: 10,
-    overflow: 'hidden',
-    border: '1px solid #27272a',
-  },
-  scaleSwatch: {
-    flex: 1,
-    height: 56,
-    display: 'flex',
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    padding: '0 0 4px',
-    fontSize: 9,
-    fontWeight: 600,
-    cursor: 'pointer',
-    transition: 'transform 0.15s',
-    position: 'relative',
-  },
-  contrastGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
-    gap: 8,
-  },
-  contrastCell: {
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 12,
-    fontWeight: 600,
-    minHeight: 60,
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'space-between',
-  },
-  badge: {
-    display: 'inline-block',
-    padding: '2px 6px',
-    borderRadius: 4,
-    fontSize: 10,
-    fontWeight: 700,
-    letterSpacing: '0.04em',
-  },
-  exportBox: {
-    background: '#18181b',
-    borderRadius: 8,
-    border: '1px solid #27272a',
-    padding: 16,
-    marginBottom: 12,
-  },
-  codeBlock: {
-    background: '#09090b',
-    borderRadius: 6,
-    padding: 12,
-    fontSize: 12,
-    fontFamily: "'SF Mono', 'Fira Code', monospace",
-    overflowX: 'auto',
-    whiteSpace: 'pre',
-    lineHeight: 1.6,
-    color: '#d4d4d8',
-    border: '1px solid #27272a',
-    maxHeight: 300,
-    overflowY: 'auto',
-  },
-  tabs: {
-    display: 'flex',
-    gap: 2,
-    marginBottom: 16,
-    background: '#18181b',
-    borderRadius: 8,
-    padding: 3,
-    border: '1px solid #27272a',
-  },
-  tab: {
-    flex: 1,
-    padding: '8px 12px',
-    borderRadius: 6,
-    border: 'none',
-    background: 'transparent',
-    color: '#a1a1aa',
-    fontSize: 12,
-    fontWeight: 500,
-    cursor: 'pointer',
-    transition: 'all 0.15s',
-    fontFamily: 'inherit',
-  },
-  tabActive: {
-    background: '#27272a',
-    color: '#fafafa',
-  },
-  lockRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
-  input: {
-    background: '#18181b',
-    border: '1px solid #3f3f46',
-    borderRadius: 6,
-    padding: '6px 10px',
-    color: '#fafafa',
-    fontSize: 12,
-    fontFamily: 'inherit',
-    outline: 'none',
-    width: '100%',
-  },
-  select: {
-    background: '#18181b',
-    border: '1px solid #3f3f46',
-    borderRadius: 6,
-    padding: '6px 10px',
-    color: '#fafafa',
-    fontSize: 12,
-    fontFamily: 'inherit',
-    outline: 'none',
-    cursor: 'pointer',
-  },
-  gamutWarning: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-    padding: '6px 10px',
-    background: '#422006',
-    border: '1px solid #92400e',
-    borderRadius: 6,
-    fontSize: 11,
-    color: '#fbbf24',
-    marginTop: 8,
-  },
-  tooltip: {
-    position: 'absolute',
-    bottom: '100%',
-    left: '50%',
-    transform: 'translateX(-50%)',
-    background: '#18181b',
-    border: '1px solid #3f3f46',
-    borderRadius: 6,
-    padding: '6px 10px',
-    fontSize: 11,
-    whiteSpace: 'nowrap',
-    pointerEvents: 'none',
-    zIndex: 50,
-    marginBottom: 4,
-  },
-  cvdRow: {
-    display: 'flex',
-    gap: 8,
-    marginBottom: 8,
-  },
-  cvdSwatch: {
-    flex: 1,
-    height: 40,
-    borderRadius: 6,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: 10,
-    fontWeight: 600,
-  },
+function useWindowWidth() {
+  const [width, setWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200)
+  useEffect(() => {
+    const onResize = () => setWidth(window.innerWidth)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  return width
+}
+
+const MAX_HISTORY = 80
+
+function useHistory(initialState) {
+  const [present, setPresent] = useState(initialState)
+  const pastRef = useRef([])
+  const futureRef = useRef([])
+  const skipRef = useRef(false)
+
+  const set = useCallback((updater) => {
+    setPresent(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      if (!skipRef.current) {
+        pastRef.current = [...pastRef.current.slice(-(MAX_HISTORY - 1)), prev]
+        futureRef.current = []
+      }
+      skipRef.current = false
+      return next
+    })
+  }, [])
+
+  const undo = useCallback(() => {
+    if (pastRef.current.length === 0) return
+    setPresent(prev => {
+      futureRef.current = [prev, ...futureRef.current]
+      const previous = pastRef.current[pastRef.current.length - 1]
+      pastRef.current = pastRef.current.slice(0, -1)
+      skipRef.current = true
+      return previous
+    })
+  }, [])
+
+  const redo = useCallback(() => {
+    if (futureRef.current.length === 0) return
+    setPresent(prev => {
+      pastRef.current = [...pastRef.current, prev]
+      const next = futureRef.current[0]
+      futureRef.current = futureRef.current.slice(1)
+      skipRef.current = true
+      return next
+    })
+  }, [])
+
+  const canUndo = pastRef.current.length > 0
+  const canRedo = futureRef.current.length > 0
+
+  return { state: present, set, undo, redo, canUndo, canRedo }
 }
 
 // ============================================================================
-// SLIDER COMPONENT WITH HUE GRADIENT
+// RESPONSIVE STYLE HELPERS
 // ============================================================================
 
-function HslSlider({ label, value, min, max, onChange, gradient }) {
+const BP_MOBILE = 768
+const BP_TABLET = 1024
+
+function getStyles(w) {
+  const mobile = w < BP_MOBILE
+  const tablet = w >= BP_MOBILE && w < BP_TABLET
+
+  return {
+    app: {
+      minHeight: '100vh',
+      background: '#09090b',
+      color: '#fafafa',
+      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    },
+    header: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: mobile ? '12px 16px' : '16px 24px',
+      borderBottom: '1px solid #27272a',
+      background: '#09090b',
+      position: 'sticky',
+      top: 0,
+      zIndex: 100,
+      gap: 8,
+    },
+    logo: {
+      fontSize: mobile ? 17 : 20,
+      fontWeight: 700,
+      letterSpacing: '-0.02em',
+      whiteSpace: 'nowrap',
+    },
+    headerActions: {
+      display: 'flex',
+      gap: mobile ? 4 : 8,
+      alignItems: 'center',
+      flexShrink: 0,
+    },
+    main: mobile ? {
+      display: 'flex',
+      flexDirection: 'column',
+      minHeight: 'calc(100vh - 53px)',
+    } : {
+      display: 'grid',
+      gridTemplateColumns: tablet ? '260px 1fr' : '300px 1fr',
+      minHeight: 'calc(100vh - 57px)',
+    },
+    sidebar: mobile ? {
+      borderBottom: '1px solid #27272a',
+      padding: '16px',
+    } : {
+      borderRight: '1px solid #27272a',
+      padding: '20px',
+      overflowY: 'auto',
+      maxHeight: 'calc(100vh - 57px)',
+    },
+    content: {
+      padding: mobile ? '16px' : '24px',
+      overflowY: mobile ? 'visible' : 'auto',
+      maxHeight: mobile ? 'none' : 'calc(100vh - 57px)',
+    },
+    section: { marginBottom: mobile ? 20 : 28 },
+    sectionTitle: {
+      fontSize: 11,
+      fontWeight: 600,
+      textTransform: 'uppercase',
+      letterSpacing: '0.08em',
+      color: '#a1a1aa',
+      marginBottom: 12,
+    },
+    sliderGroup: { marginBottom: 14 },
+    sliderLabel: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      fontSize: 12,
+      color: '#a1a1aa',
+      marginBottom: 4,
+    },
+    slider: {
+      width: '100%',
+      height: 6,
+      borderRadius: 3,
+      appearance: 'none',
+      outline: 'none',
+      cursor: 'pointer',
+      background: '#27272a',
+    },
+    btn: {
+      padding: mobile ? '5px 10px' : '6px 12px',
+      borderRadius: 6,
+      border: '1px solid #3f3f46',
+      background: '#18181b',
+      color: '#fafafa',
+      fontSize: mobile ? 11 : 12,
+      cursor: 'pointer',
+      transition: 'all 0.15s',
+      fontFamily: 'inherit',
+    },
+    btnActive: {
+      background: '#fafafa',
+      color: '#09090b',
+      borderColor: '#fafafa',
+    },
+    btnSmall: { padding: '4px 8px', fontSize: 11 },
+    btnIcon: {
+      padding: '5px 8px',
+      borderRadius: 6,
+      border: '1px solid #3f3f46',
+      background: '#18181b',
+      color: '#fafafa',
+      fontSize: 14,
+      cursor: 'pointer',
+      transition: 'all 0.15s',
+      fontFamily: 'inherit',
+      lineHeight: 1,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    btnIconDisabled: {
+      opacity: 0.3,
+      cursor: 'default',
+    },
+    radioGroup: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 4,
+    },
+    radioOption: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      padding: '6px 8px',
+      borderRadius: 6,
+      cursor: 'pointer',
+      fontSize: 13,
+      transition: 'background 0.15s',
+    },
+    colorPreview: {
+      width: '100%',
+      height: mobile ? 60 : 80,
+      borderRadius: 10,
+      marginBottom: 16,
+      border: '1px solid #27272a',
+      position: 'relative',
+      overflow: 'hidden',
+    },
+    scaleRow: {
+      marginBottom: mobile ? 16 : 20,
+      transition: 'opacity 0.2s',
+    },
+    scaleLabel: {
+      fontSize: 13,
+      fontWeight: 500,
+      marginBottom: 6,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      flexWrap: 'wrap',
+    },
+    scaleSwatches: {
+      display: 'flex',
+      borderRadius: 10,
+      overflow: 'hidden',
+      border: '1px solid #27272a',
+    },
+    scaleSwatch: {
+      flex: 1,
+      height: mobile ? 44 : 56,
+      display: 'flex',
+      alignItems: 'flex-end',
+      justifyContent: 'center',
+      padding: '0 0 4px',
+      fontSize: mobile ? 8 : 9,
+      fontWeight: 600,
+      cursor: 'pointer',
+      transition: 'transform 0.15s',
+      position: 'relative',
+    },
+    contrastGrid: {
+      display: 'grid',
+      gridTemplateColumns: mobile
+        ? 'repeat(auto-fill, minmax(120px, 1fr))'
+        : 'repeat(auto-fill, minmax(140px, 1fr))',
+      gap: 8,
+    },
+    contrastCell: {
+      borderRadius: 8,
+      padding: mobile ? 10 : 12,
+      fontSize: 12,
+      fontWeight: 600,
+      minHeight: 60,
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'space-between',
+    },
+    badge: {
+      display: 'inline-block',
+      padding: '2px 6px',
+      borderRadius: 4,
+      fontSize: 10,
+      fontWeight: 700,
+      letterSpacing: '0.04em',
+    },
+    codeBlock: {
+      background: '#09090b',
+      borderRadius: 6,
+      padding: 12,
+      fontSize: mobile ? 11 : 12,
+      fontFamily: "'SF Mono', 'Fira Code', monospace",
+      overflowX: 'auto',
+      whiteSpace: 'pre',
+      lineHeight: 1.6,
+      color: '#d4d4d8',
+      border: '1px solid #27272a',
+      maxHeight: 300,
+      overflowY: 'auto',
+    },
+    tabs: {
+      display: 'flex',
+      gap: 2,
+      marginBottom: 16,
+      background: '#18181b',
+      borderRadius: 8,
+      padding: 3,
+      border: '1px solid #27272a',
+    },
+    tab: {
+      flex: 1,
+      padding: mobile ? '7px 8px' : '8px 12px',
+      borderRadius: 6,
+      border: 'none',
+      background: 'transparent',
+      color: '#a1a1aa',
+      fontSize: mobile ? 11 : 12,
+      fontWeight: 500,
+      cursor: 'pointer',
+      transition: 'all 0.15s',
+      fontFamily: 'inherit',
+    },
+    tabActive: {
+      background: '#27272a',
+      color: '#fafafa',
+    },
+    input: {
+      background: '#18181b',
+      border: '1px solid #3f3f46',
+      borderRadius: 6,
+      padding: '6px 10px',
+      color: '#fafafa',
+      fontSize: 12,
+      fontFamily: 'inherit',
+      outline: 'none',
+      width: '100%',
+    },
+    gamutWarning: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 6,
+      padding: '6px 10px',
+      background: '#422006',
+      border: '1px solid #92400e',
+      borderRadius: 6,
+      fontSize: 11,
+      color: '#fbbf24',
+      marginTop: 8,
+    },
+    tooltip: {
+      position: 'absolute',
+      bottom: '100%',
+      left: '50%',
+      transform: 'translateX(-50%)',
+      background: '#18181b',
+      border: '1px solid #3f3f46',
+      borderRadius: 6,
+      padding: '6px 10px',
+      fontSize: 11,
+      whiteSpace: 'nowrap',
+      pointerEvents: 'none',
+      zIndex: 50,
+      marginBottom: 4,
+    },
+    cvdRow: { display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' },
+    cvdSwatch: {
+      flex: mobile ? '1 1 40%' : 1,
+      height: 40,
+      borderRadius: 6,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontSize: 10,
+      fontWeight: 600,
+    },
+    dragHandle: {
+      cursor: 'grab',
+      padding: '0 4px',
+      fontSize: 14,
+      color: '#52525b',
+      userSelect: 'none',
+      display: 'flex',
+      alignItems: 'center',
+    },
+    mobileToggle: {
+      padding: '10px 16px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      borderBottom: '1px solid #27272a',
+      cursor: 'pointer',
+      background: '#18181b',
+      fontSize: 13,
+      fontWeight: 500,
+    },
+  }
+}
+
+// ============================================================================
+// SMALL COMPONENTS
+// ============================================================================
+
+function HslSlider({ label, value, min, max, onChange, gradient, S }) {
   return (
-    <div style={STYLES.sliderGroup}>
-      <div style={STYLES.sliderLabel}>
+    <div style={S.sliderGroup}>
+      <div style={S.sliderLabel}>
         <span>{label}</span>
         <span>{Math.round(value)}{label === 'H' ? '°' : '%'}</span>
       </div>
@@ -624,26 +763,17 @@ function HslSlider({ label, value, min, max, onChange, gradient }) {
         step={1}
         value={value}
         onChange={e => onChange(Number(e.target.value))}
-        style={{
-          ...STYLES.slider,
-          background: gradient || '#27272a',
-        }}
+        style={{ ...S.slider, background: gradient || '#27272a' }}
       />
     </div>
   )
 }
 
-// ============================================================================
-// HEX INPUT COMPONENT
-// ============================================================================
-
-function HexInput({ value, onChange }) {
+function HexInput({ value, onChange, S }) {
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState(value)
 
-  useEffect(() => {
-    if (!editing) setText(value)
-  }, [value, editing])
+  useEffect(() => { if (!editing) setText(value) }, [value, editing])
 
   const handleSubmit = () => {
     setEditing(false)
@@ -657,7 +787,7 @@ function HexInput({ value, onChange }) {
 
   return (
     <input
-      style={{ ...STYLES.input, fontFamily: "'SF Mono', 'Fira Code', monospace", textTransform: 'uppercase' }}
+      style={{ ...S.input, fontFamily: "'SF Mono', 'Fira Code', monospace", textTransform: 'uppercase' }}
       value={editing ? text : value}
       onFocus={() => setEditing(true)}
       onChange={e => setText(e.target.value)}
@@ -668,38 +798,55 @@ function HexInput({ value, onChange }) {
   )
 }
 
-// ============================================================================
-// COLOR SWATCH COMPONENT
-// ============================================================================
+function EditableLabel({ value, onChange, style }) {
+  const [editing, setEditing] = useState(false)
+  const [text, setText] = useState(value)
+  const inputRef = useRef(null)
 
-function ColorSwatch({ color, size = 32, label, active, onClick, showHex }) {
-  const hex = rgbToHex(color.r, color.g, color.b)
-  const lum = relativeLuminance(color.r, color.g, color.b)
-  const textColor = lum > 0.179 ? '#09090b' : '#fafafa'
+  useEffect(() => { if (!editing) setText(value) }, [value, editing])
+  useEffect(() => { if (editing && inputRef.current) inputRef.current.select() }, [editing])
+
+  const commit = () => {
+    setEditing(false)
+    const trimmed = text.trim()
+    if (trimmed && trimmed !== value) onChange(trimmed)
+    else setText(value)
+  }
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        value={text}
+        onChange={e => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setText(value); setEditing(false) } }}
+        style={{
+          background: '#27272a',
+          border: '1px solid #52525b',
+          borderRadius: 4,
+          padding: '1px 6px',
+          color: '#fafafa',
+          fontSize: 13,
+          fontWeight: 500,
+          fontFamily: 'inherit',
+          outline: 'none',
+          width: 140,
+          ...style,
+        }}
+        spellCheck={false}
+      />
+    )
+  }
 
   return (
-    <div
-      onClick={onClick}
-      style={{
-        width: size,
-        height: size,
-        borderRadius: 8,
-        background: hex,
-        cursor: onClick ? 'pointer' : 'default',
-        border: active ? '2px solid #fafafa' : '1px solid #27272a',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: 10,
-        fontWeight: 600,
-        color: textColor,
-        transition: 'transform 0.15s',
-        flexShrink: 0,
-      }}
-      title={`${hex}${label ? ' — ' + label : ''}`}
+    <span
+      onClick={() => setEditing(true)}
+      style={{ cursor: 'text', borderBottom: '1px dashed #52525b', ...style }}
+      title="Click to rename"
     >
-      {showHex && hex.toUpperCase()}
-    </div>
+      {value}
+    </span>
   )
 }
 
@@ -707,7 +854,7 @@ function ColorSwatch({ color, size = 32, label, active, onClick, showHex }) {
 // CONTRAST LOCK PANEL
 // ============================================================================
 
-function ContrastLockPanel({ colorId, colorHsl, contrastLocks, setContrastLocks }) {
+function ContrastLockPanel({ colorId, colorHsl, contrastLocks, setContrastLocks, S }) {
   const lock = contrastLocks[colorId]
   const [targetInput, setTargetInput] = useState(lock?.target?.toString() || '4.5')
 
@@ -735,37 +882,30 @@ function ContrastLockPanel({ colorId, colorHsl, contrastLocks, setContrastLocks 
 
   return (
     <div style={{ marginTop: 12 }}>
-      <div style={STYLES.sectionTitle}>Contrast Lock</div>
+      <div style={S.sectionTitle}>Contrast Lock</div>
       {lock ? (
         <div>
           <div style={{ fontSize: 12, marginBottom: 8, color: '#d4d4d8' }}>
             Locked to <strong>{lock.target}:1</strong> on <strong>{lock.bg}</strong>
             {' → '}L = {Math.round(lock.solvedL)}%
           </div>
-          <button style={{ ...STYLES.btn, ...STYLES.btnSmall }} onClick={removeLock}>
-            Remove Lock
-          </button>
+          <button style={{ ...S.btn, ...S.btnSmall }} onClick={removeLock}>Remove Lock</button>
         </div>
       ) : (
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           <input
-            type="number"
-            step="0.1"
-            min="1"
-            max="21"
+            type="number" step="0.1" min="1" max="21"
             value={targetInput}
             onChange={e => setTargetInput(e.target.value)}
-            style={{ ...STYLES.input, width: 60 }}
+            style={{ ...S.input, width: 60 }}
           />
           <span style={{ fontSize: 11, color: '#71717a' }}>:1 on</span>
           {bgOptions.map(bg => (
             <button
               key={bg.label}
-              style={{ ...STYLES.btn, ...STYLES.btnSmall }}
+              style={{ ...S.btn, ...S.btnSmall }}
               onClick={() => applyLock(parseFloat(targetInput), bg.label)}
-            >
-              {bg.label}
-            </button>
+            >{bg.label}</button>
           ))}
         </div>
       )}
@@ -777,20 +917,16 @@ function ContrastLockPanel({ colorId, colorHsl, contrastLocks, setContrastLocks 
 // EXPORT PANEL
 // ============================================================================
 
-function ExportPanel({ allColors, keyColor }) {
+function ExportPanel({ allColors, S }) {
   const [format, setFormat] = useState('css')
   const [copied, setCopied] = useState(false)
 
   const formats = {
     css: {
-      label: 'CSS Variables',
+      label: 'CSS Vars',
       generate: () => {
         let out = ':root {\n'
-        allColors.forEach(group => {
-          group.scale.forEach(s => {
-            out += `  --${group.name}-${s.step}: ${s.hex};\n`
-          })
-        })
+        allColors.forEach(g => { g.scale.forEach(s => { out += `  --${g.name}-${s.step}: ${s.hex};\n` }) })
         out += '}'
         return out
       },
@@ -799,12 +935,7 @@ function ExportPanel({ allColors, keyColor }) {
       label: 'Tailwind',
       generate: () => {
         const config = {}
-        allColors.forEach(group => {
-          config[group.name] = {}
-          group.scale.forEach(s => {
-            config[group.name][s.step] = s.hex
-          })
-        })
+        allColors.forEach(g => { config[g.name] = {}; g.scale.forEach(s => { config[g.name][s.step] = s.hex }) })
         return `// tailwind.config.js\nmodule.exports = {\n  theme: {\n    extend: {\n      colors: ${JSON.stringify(config, null, 8).replace(/^/gm, '      ').trim()}\n    }\n  }\n}`
       },
     },
@@ -812,14 +943,10 @@ function ExportPanel({ allColors, keyColor }) {
       label: 'JSON',
       generate: () => {
         const out = {}
-        allColors.forEach(group => {
-          out[group.name] = {}
-          group.scale.forEach(s => {
-            out[group.name][s.step] = {
-              hex: s.hex,
-              rgb: `rgb(${s.rgb.r}, ${s.rgb.g}, ${s.rgb.b})`,
-              hsl: `hsl(${Math.round(s.hsl.h)}, ${Math.round(s.hsl.s)}%, ${Math.round(s.hsl.l)}%)`,
-            }
+        allColors.forEach(g => {
+          out[g.name] = {}
+          g.scale.forEach(s => {
+            out[g.name][s.step] = { hex: s.hex, rgb: `rgb(${s.rgb.r}, ${s.rgb.g}, ${s.rgb.b})`, hsl: `hsl(${Math.round(s.hsl.h)}, ${Math.round(s.hsl.s)}%, ${Math.round(s.hsl.l)}%)` }
           })
         })
         return JSON.stringify(out, null, 2)
@@ -829,55 +956,28 @@ function ExportPanel({ allColors, keyColor }) {
       label: 'SCSS',
       generate: () => {
         let out = ''
-        allColors.forEach(group => {
-          group.scale.forEach(s => {
-            out += `$${group.name}-${s.step}: ${s.hex};\n`
-          })
-          out += '\n'
-        })
+        allColors.forEach(g => { g.scale.forEach(s => { out += `$${g.name}-${s.step}: ${s.hex};\n` }); out += '\n' })
         return out.trim()
       },
     },
   }
 
   const output = formats[format].generate()
-
-  const copy = () => {
-    navigator.clipboard.writeText(output).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    })
-  }
+  const copy = () => { navigator.clipboard.writeText(output).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) }) }
 
   return (
     <div>
-      <div style={STYLES.tabs}>
+      <div style={S.tabs}>
         {Object.entries(formats).map(([key, f]) => (
-          <button
-            key={key}
-            style={{ ...STYLES.tab, ...(format === key ? STYLES.tabActive : {}) }}
-            onClick={() => setFormat(key)}
-          >
-            {f.label}
-          </button>
+          <button key={key} style={{ ...S.tab, ...(format === key ? S.tabActive : {}) }} onClick={() => setFormat(key)}>{f.label}</button>
         ))}
       </div>
       <div style={{ position: 'relative' }}>
-        <pre style={STYLES.codeBlock}>{output}</pre>
+        <pre style={S.codeBlock}>{output}</pre>
         <button
           onClick={copy}
-          style={{
-            ...STYLES.btn,
-            ...STYLES.btnSmall,
-            position: 'absolute',
-            top: 8,
-            right: 8,
-            background: copied ? '#22c55e' : '#18181b',
-            color: copied ? '#09090b' : '#fafafa',
-          }}
-        >
-          {copied ? 'Copied!' : 'Copy'}
-        </button>
+          style={{ ...S.btn, ...S.btnSmall, position: 'absolute', top: 8, right: 8, background: copied ? '#22c55e' : '#18181b', color: copied ? '#09090b' : '#fafafa' }}
+        >{copied ? 'Copied!' : 'Copy'}</button>
       </div>
     </div>
   )
@@ -887,7 +987,7 @@ function ExportPanel({ allColors, keyColor }) {
 // CONTRAST MATRIX
 // ============================================================================
 
-function ContrastMatrix({ colors }) {
+function ContrastMatrix({ colors, S }) {
   if (colors.length === 0) return null
 
   const entries = colors.map(c => ({
@@ -897,7 +997,6 @@ function ContrastMatrix({ colors }) {
     lum: relativeLuminance(c.rgb.r, c.rgb.g, c.rgb.b),
   }))
 
-  // Add white and black for reference
   const all = [
     { label: 'White', rgb: { r: 255, g: 255, b: 255 }, hex: '#ffffff', lum: 1 },
     { label: 'Black', rgb: { r: 0, g: 0, b: 0 }, hex: '#000000', lum: 0 },
@@ -934,17 +1033,11 @@ function ContrastMatrix({ colors }) {
                       <span style={{ color: '#3f3f46' }}>—</span>
                     ) : (
                       <div style={{
-                        background: bg.hex,
-                        color: fg.hex,
-                        borderRadius: 4,
-                        padding: '4px 6px',
-                        fontWeight: 700,
-                        fontSize: 10,
-                        border: '1px solid #3f3f46',
-                        lineHeight: 1.3,
+                        background: bg.hex, color: fg.hex, borderRadius: 4,
+                        padding: '4px 6px', fontWeight: 700, fontSize: 10,
+                        border: '1px solid #3f3f46', lineHeight: 1.3,
                       }}>
-                        {ratio.toFixed(1)}
-                        <br />
+                        {ratio.toFixed(1)}<br />
                         <span style={{ color: wcagLevelColor(level), fontSize: 9 }}>{level}</span>
                       </div>
                     )}
@@ -963,7 +1056,7 @@ function ContrastMatrix({ colors }) {
 // COLOR BLINDNESS PREVIEW
 // ============================================================================
 
-function CVDPreview({ rgb }) {
+function CVDPreview({ rgb, S }) {
   const types = [
     { key: 'normal', label: 'Normal' },
     { key: 'protanopia', label: 'Protanopia' },
@@ -973,14 +1066,14 @@ function CVDPreview({ rgb }) {
 
   return (
     <div>
-      <div style={STYLES.sectionTitle}>Color Vision Simulation</div>
-      <div style={STYLES.cvdRow}>
+      <div style={S.sectionTitle}>Color Vision Simulation</div>
+      <div style={S.cvdRow}>
         {types.map(t => {
           const sim = t.key === 'normal' ? rgb : simulateColorBlindness(rgb.r, rgb.g, rgb.b, t.key)
           const hex = rgbToHex(sim.r, sim.g, sim.b)
           const lum = relativeLuminance(sim.r, sim.g, sim.b)
           return (
-            <div key={t.key} style={{ ...STYLES.cvdSwatch, background: hex, color: lum > 0.179 ? '#09090b' : '#fafafa' }}>
+            <div key={t.key} style={{ ...S.cvdSwatch, background: hex, color: lum > 0.179 ? '#09090b' : '#fafafa' }}>
               {t.label}
             </div>
           )
@@ -995,36 +1088,63 @@ function CVDPreview({ rgb }) {
 // ============================================================================
 
 export default function HueLab() {
-  // --- State ---
-  const [keyColor, setKeyColor] = useState(() => {
-    const saved = hashToState(window.location.hash)
-    return saved ? { h: saved.h, s: saved.s, l: saved.l } : { h: 230, s: 75, l: 55 }
+  const windowWidth = useWindowWidth()
+  const S = useMemo(() => getStyles(windowWidth), [windowWidth])
+  const mobile = windowWidth < BP_MOBILE
+
+  // --- Undo/redo history wrapping core palette state ---
+  const saved = useMemo(() => hashToState(window.location.hash), [])
+  const history = useHistory({
+    keyColor: saved ? { h: saved.h, s: saved.s, l: saved.l } : { h: 230, s: 75, l: 55 },
+    harmonyMode: saved?.m || 'complementary',
+    contrastLocks: saved?.cl || {},
+    colorOverrides: saved?.ov || {},
+    unlinkedColors: saved?.ul || {},
+    colorOrder: saved?.co || null,
+    colorNames: saved?.cn || {},
   })
-  const [harmonyMode, setHarmonyMode] = useState(() => {
-    const saved = hashToState(window.location.hash)
-    return saved?.m || 'complementary'
-  })
-  const [contrastLocks, setContrastLocks] = useState(() => {
-    const saved = hashToState(window.location.hash)
-    return saved?.cl || {}
-  })
-  const [colorOverrides, setColorOverrides] = useState(() => {
-    const saved = hashToState(window.location.hash)
-    return saved?.ov || {}
-  })
-  const [unlinkedColors, setUnlinkedColors] = useState(() => {
-    const saved = hashToState(window.location.hash)
-    return saved?.ul || {}
-  })
+
+  const { keyColor, harmonyMode, contrastLocks, colorOverrides, unlinkedColors, colorOrder, colorNames } = history.state
+
+  // Convenience updaters
+  const setKeyColor = useCallback(v => history.set(s => ({ ...s, keyColor: typeof v === 'function' ? v(s.keyColor) : v })), [history])
+  const setHarmonyMode = useCallback(v => history.set(s => ({ ...s, harmonyMode: v })), [history])
+  const setContrastLocks = useCallback(v => history.set(s => ({ ...s, contrastLocks: typeof v === 'function' ? v(s.contrastLocks) : v })), [history])
+  const setColorOverrides = useCallback(v => history.set(s => ({ ...s, colorOverrides: typeof v === 'function' ? v(s.colorOverrides) : v })), [history])
+  const setUnlinkedColors = useCallback(v => history.set(s => ({ ...s, unlinkedColors: typeof v === 'function' ? v(s.unlinkedColors) : v })), [history])
+  const setColorOrder = useCallback(v => history.set(s => ({ ...s, colorOrder: typeof v === 'function' ? v(s.colorOrder) : v })), [history])
+  const setColorNames = useCallback(v => history.set(s => ({ ...s, colorNames: typeof v === 'function' ? v(s.colorNames) : v })), [history])
+
   const [activePanel, setActivePanel] = useState('palette')
   const [showCmyk, setShowCmyk] = useState(false)
   const [selectedColor, setSelectedColor] = useState(null)
   const [hoveredSwatch, setHoveredSwatch] = useState(null)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  // Drag-and-drop state
+  const [dragIdx, setDragIdx] = useState(null)
+  const [dragOverIdx, setDragOverIdx] = useState(null)
+
+  // --- Keyboard shortcuts (undo/redo) ---
+  useEffect(() => {
+    const handler = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+        e.preventDefault()
+        if (e.shiftKey) history.redo()
+        else history.undo()
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'y') {
+        e.preventDefault()
+        history.redo()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [history])
 
   // --- Derived colors ---
   const keyRgb = useMemo(() => hslToRgb(keyColor.h, keyColor.s, keyColor.l), [keyColor])
   const keyHex = useMemo(() => rgbToHex(keyRgb.r, keyRgb.g, keyRgb.b), [keyRgb])
-  const keyOklab = useMemo(() => rgbToOklab(keyRgb.r, keyRgb.g, keyRgb.b), [keyRgb])
   const keyCmyk = useMemo(() => rgbToCmyk(keyRgb.r, keyRgb.g, keyRgb.b), [keyRgb])
   const keyInGamut = useMemo(() => isApproxInCmykGamut(keyRgb.r, keyRgb.g, keyRgb.b), [keyRgb])
 
@@ -1037,8 +1157,7 @@ export default function HueLab() {
       const hsl = override ? { ...c, ...override } : c
       const lock = contrastLocks[id]
       if (lock) {
-        const solvedL = solveForContrast(hsl.h, hsl.s, lock.target, lock.bgRgb)
-        hsl.l = solvedL
+        hsl.l = solveForContrast(hsl.h, hsl.s, lock.target, lock.bgRgb)
       }
       return { ...hsl, id }
     })
@@ -1069,18 +1188,42 @@ export default function HueLab() {
     }))
   }, [keyColor, harmonyColors, contrastLocks])
 
+  // --- Auto-generate cheesy color names for new colors ---
+  useEffect(() => {
+    const updates = {}
+    let needsUpdate = false
+    allPaletteColors.forEach(g => {
+      if (!colorNames[g.id]) {
+        updates[g.id] = generateColorName(g.hsl.h, g.hsl.s, g.hsl.l)
+        needsUpdate = true
+      }
+    })
+    if (needsUpdate) {
+      setColorNames(prev => ({ ...prev, ...updates }))
+    }
+  }, [allPaletteColors.length, harmonyMode])
+
+  // Reorder palette based on colorOrder
+  const orderedPaletteColors = useMemo(() => {
+    if (!colorOrder || colorOrder.length === 0) return allPaletteColors
+    const map = {}
+    allPaletteColors.forEach(g => { map[g.id] = g })
+    const ordered = []
+    colorOrder.forEach(id => { if (map[id]) { ordered.push(map[id]); delete map[id] } })
+    Object.values(map).forEach(g => ordered.push(g))
+    return ordered
+  }, [allPaletteColors, colorOrder])
+
   // --- Recalculate contrast locks when hue changes ---
   useEffect(() => {
     const newLocks = { ...contrastLocks }
     let changed = false
     for (const [id, lock] of Object.entries(newLocks)) {
       let hsl
-      if (id === 'key') {
-        hsl = keyColor
-      } else {
+      if (id === 'key') hsl = keyColor
+      else {
         const match = harmonyColors.find(c => c.id === id)
-        if (match) hsl = match
-        else continue
+        if (match) hsl = match; else continue
       }
       const newL = solveForContrast(hsl.h, hsl.s, lock.target, lock.bgRgb)
       if (Math.abs(newL - (lock.solvedL || 0)) > 0.5) {
@@ -1093,21 +1236,20 @@ export default function HueLab() {
 
   // --- URL persistence ---
   useEffect(() => {
-    const hash = stateToHash({ keyColor, harmonyMode, contrastLocks, colorOverrides, unlinkedColors })
+    const hash = stateToHash({ keyColor, harmonyMode, contrastLocks, colorOverrides, unlinkedColors, colorOrder, colorNames })
     if (hash) window.history.replaceState(null, '', hash)
-  }, [keyColor, harmonyMode, contrastLocks, colorOverrides, unlinkedColors])
+  }, [keyColor, harmonyMode, contrastLocks, colorOverrides, unlinkedColors, colorOrder, colorNames])
 
   // --- Callbacks ---
-  const setHue = useCallback(h => setKeyColor(prev => ({ ...prev, h })), [])
-  const setSaturation = useCallback(s => setKeyColor(prev => ({ ...prev, s })), [])
-  const setLightness = useCallback(l => setKeyColor(prev => ({ ...prev, l })), [])
+  const setHue = useCallback(h => setKeyColor(prev => ({ ...prev, h })), [setKeyColor])
+  const setSaturation = useCallback(s => setKeyColor(prev => ({ ...prev, s })), [setKeyColor])
+  const setLightness = useCallback(l => setKeyColor(prev => ({ ...prev, l })), [setKeyColor])
   const setHex = useCallback(hex => {
     const rgb = hexToRgb(hex)
     const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b)
     setKeyColor(hsl)
-  }, [])
+  }, [setKeyColor])
 
-  // Hue gradient for slider
   const hueGradient = useMemo(() => {
     const stops = Array.from({ length: 13 }, (_, i) => {
       const h = (i / 12) * 360
@@ -1117,14 +1259,12 @@ export default function HueLab() {
     return `linear-gradient(to right, ${stops.join(', ')})`
   }, [keyColor.s, keyColor.l])
 
-  // Saturation gradient
   const satGradient = useMemo(() => {
     const lo = hslToRgb(keyColor.h, 0, keyColor.l)
     const hi = hslToRgb(keyColor.h, 100, keyColor.l)
     return `linear-gradient(to right, ${rgbToHex(lo.r, lo.g, lo.b)}, ${rgbToHex(hi.r, hi.g, hi.b)})`
   }, [keyColor.h, keyColor.l])
 
-  // Lightness gradient
   const litGradient = useMemo(() => {
     const lo = hslToRgb(keyColor.h, keyColor.s, 0)
     const mid = hslToRgb(keyColor.h, keyColor.s, 50)
@@ -1132,141 +1272,184 @@ export default function HueLab() {
     return `linear-gradient(to right, ${rgbToHex(lo.r, lo.g, lo.b)}, ${rgbToHex(mid.r, mid.g, mid.b)}, ${rgbToHex(hi.r, hi.g, hi.b)})`
   }, [keyColor.h, keyColor.s])
 
-  // --- Colors for contrast matrix ---
   const matrixColors = useMemo(() => {
-    return allPaletteColors.map(g => ({
-      label: g.label,
+    return orderedPaletteColors.map(g => ({
+      label: colorNames[g.id] || g.label,
       rgb: g.rgb,
     }))
-  }, [allPaletteColors])
+  }, [orderedPaletteColors, colorNames])
 
-  // Selected palette group for details
   const selectedGroup = selectedColor
     ? allPaletteColors.find(g => g.id === selectedColor) || allPaletteColors[0]
     : allPaletteColors[0]
 
+  // --- Drag handlers ---
+  const handleDragStart = (e, idx) => {
+    setDragIdx(idx)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+  const handleDragOver = (e, idx) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDragOverIdx(idx)
+  }
+  const handleDragEnd = () => { setDragIdx(null); setDragOverIdx(null) }
+  const handleDrop = (e, dropIndex) => {
+    e.preventDefault()
+    if (dragIdx === null || dragIdx === dropIndex) { handleDragEnd(); return }
+    const ids = orderedPaletteColors.map(g => g.id)
+    const moved = ids.splice(dragIdx, 1)[0]
+    ids.splice(dropIndex, 0, moved)
+    setColorOrder(ids)
+    handleDragEnd()
+  }
+
+  // --- Sidebar content (shared between mobile drawer and desktop sidebar) ---
+  const sidebarContent = (
+    <>
+      {/* Color Preview */}
+      <div style={{ ...S.colorPreview, background: keyHex }}>
+        <div style={{
+          position: 'absolute', bottom: 8, left: 10, right: 10,
+          display: 'flex', justifyContent: 'space-between',
+          fontSize: 11, fontWeight: 600,
+          color: relativeLuminance(keyRgb.r, keyRgb.g, keyRgb.b) > 0.179 ? '#09090b' : '#fafafa',
+        }}>
+          <span>{keyHex.toUpperCase()}</span>
+          {showCmyk && <span>C{keyCmyk.c} M{keyCmyk.m} Y{keyCmyk.y} K{keyCmyk.k}</span>}
+        </div>
+      </div>
+
+      {showCmyk && !keyInGamut && (
+        <div style={S.gamutWarning}>
+          <span style={{ fontSize: 14 }}>!</span>
+          Out of CMYK gamut — colors may shift in print
+        </div>
+      )}
+
+      {/* HSL Sliders */}
+      <div style={S.section}>
+        <div style={S.sectionTitle}>Key Color</div>
+        <HslSlider label="H" value={keyColor.h} min={0} max={360} onChange={setHue} gradient={hueGradient} S={S} />
+        <HslSlider label="S" value={keyColor.s} min={0} max={100} onChange={setSaturation} gradient={satGradient} S={S} />
+        <HslSlider label="L" value={keyColor.l} min={0} max={100} onChange={setLightness} gradient={litGradient} S={S} />
+        <div style={{ marginTop: 8 }}>
+          <HexInput value={keyHex} onChange={setHex} S={S} />
+        </div>
+      </div>
+
+      {/* Harmony Mode */}
+      <div style={S.section}>
+        <div style={S.sectionTitle}>Harmony</div>
+        <div style={S.radioGroup}>
+          {Object.entries(HARMONY_MODES).map(([key, mode]) => (
+            <div
+              key={key}
+              style={{ ...S.radioOption, background: harmonyMode === key ? '#27272a' : 'transparent' }}
+              onClick={() => setHarmonyMode(key)}
+            >
+              <div style={{
+                width: 14, height: 14, borderRadius: '50%',
+                border: `2px solid ${harmonyMode === key ? '#fafafa' : '#52525b'}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                {harmonyMode === key && <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#fafafa' }} />}
+              </div>
+              <span>{mode.label}</span>
+              <div style={{ display: 'flex', gap: 3, marginLeft: 'auto' }}>
+                {[0, ...mode.offsets].map((offset, i) => {
+                  const hue = (keyColor.h + offset + 360) % 360
+                  const rgb = hslToRgb(hue, keyColor.s, keyColor.l)
+                  return <div key={i} style={{ width: 12, height: 12, borderRadius: 3, background: rgbToHex(rgb.r, rgb.g, rgb.b) }} />
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Color Details */}
+      <div style={S.section}>
+        <div style={S.sectionTitle}>Details — {colorNames[selectedGroup.id] || selectedGroup.label}</div>
+        <div style={{ fontSize: 12, color: '#d4d4d8', lineHeight: 1.8, fontFamily: "'SF Mono', 'Fira Code', monospace" }}>
+          <div>HEX: {selectedGroup.hex.toUpperCase()}</div>
+          <div>RGB: {selectedGroup.rgb.r}, {selectedGroup.rgb.g}, {selectedGroup.rgb.b}</div>
+          <div>HSL: {Math.round(selectedGroup.hsl.h)}°, {Math.round(selectedGroup.hsl.s)}%, {Math.round(selectedGroup.hsl.l)}%</div>
+          <div>OKLab L: {rgbToOklab(selectedGroup.rgb.r, selectedGroup.rgb.g, selectedGroup.rgb.b).L.toFixed(3)}</div>
+          {showCmyk && (() => {
+            const cmyk = rgbToCmyk(selectedGroup.rgb.r, selectedGroup.rgb.g, selectedGroup.rgb.b)
+            return <div>CMYK: {cmyk.c}%, {cmyk.m}%, {cmyk.y}%, {cmyk.k}%</div>
+          })()}
+        </div>
+        <ContrastLockPanel
+          colorId={selectedGroup.id}
+          colorHsl={selectedGroup.hsl}
+          contrastLocks={contrastLocks}
+          setContrastLocks={setContrastLocks}
+          S={S}
+        />
+      </div>
+
+      <CVDPreview rgb={selectedGroup.rgb} S={S} />
+    </>
+  )
+
   // --- Render ---
   return (
-    <div style={STYLES.app}>
+    <div style={S.app}>
       {/* Header */}
-      <header style={STYLES.header}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={STYLES.logo}>Hue Lab</span>
-          <span style={{ fontSize: 11, color: '#71717a', fontWeight: 400 }}>Perceptual Color Palette Generator</span>
+      <header style={S.header}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: mobile ? 8 : 12, overflow: 'hidden' }}>
+          <span style={S.logo}>Hue Lab</span>
+          {!mobile && <span style={{ fontSize: 11, color: '#71717a', fontWeight: 400 }}>Perceptual Color Palette Generator</span>}
         </div>
-        <div style={STYLES.headerActions}>
+        <div style={S.headerActions}>
+          {/* Undo / Redo */}
           <button
-            style={{ ...STYLES.btn, ...(showCmyk ? STYLES.btnActive : {}) }}
+            style={{ ...S.btnIcon, ...(history.canUndo ? {} : S.btnIconDisabled) }}
+            onClick={history.undo}
+            disabled={!history.canUndo}
+            title="Undo (Ctrl+Z)"
+          >↩</button>
+          <button
+            style={{ ...S.btnIcon, ...(history.canRedo ? {} : S.btnIconDisabled) }}
+            onClick={history.redo}
+            disabled={!history.canRedo}
+            title="Redo (Ctrl+Shift+Z)"
+          >↪</button>
+
+          <button
+            style={{ ...S.btn, ...(showCmyk ? S.btnActive : {}) }}
             onClick={() => setShowCmyk(!showCmyk)}
-          >
-            CMYK
-          </button>
-          <button
-            style={{ ...STYLES.btn, ...(activePanel === 'export' ? STYLES.btnActive : {}) }}
-            onClick={() => setActivePanel(activePanel === 'export' ? 'palette' : 'export')}
-          >
-            Export
-          </button>
+          >CMYK</button>
+          {!mobile && (
+            <button
+              style={{ ...S.btn, ...(activePanel === 'export' ? S.btnActive : {}) }}
+              onClick={() => setActivePanel(activePanel === 'export' ? 'palette' : 'export')}
+            >Export</button>
+          )}
         </div>
       </header>
 
-      <div style={STYLES.main}>
-        {/* Sidebar */}
-        <aside style={STYLES.sidebar}>
-          {/* Color Preview */}
-          <div style={{ ...STYLES.colorPreview, background: keyHex }}>
-            <div style={{
-              position: 'absolute', bottom: 8, left: 10, right: 10,
-              display: 'flex', justifyContent: 'space-between',
-              fontSize: 11, fontWeight: 600,
-              color: relativeLuminance(keyRgb.r, keyRgb.g, keyRgb.b) > 0.179 ? '#09090b' : '#fafafa',
-            }}>
-              <span>{keyHex.toUpperCase()}</span>
-              {showCmyk && <span>C{keyCmyk.c} M{keyCmyk.m} Y{keyCmyk.y} K{keyCmyk.k}</span>}
-            </div>
-          </div>
+      {/* Mobile: collapsible controls toggle */}
+      {mobile && (
+        <div style={S.mobileToggle} onClick={() => setSidebarOpen(!sidebarOpen)}>
+          <span>Controls</span>
+          <span style={{ fontSize: 11, color: '#71717a' }}>{sidebarOpen ? 'Hide ▲' : 'Show ▼'}</span>
+        </div>
+      )}
 
-          {/* CMYK Gamut Warning */}
-          {showCmyk && !keyInGamut && (
-            <div style={STYLES.gamutWarning}>
-              <span style={{ fontSize: 14 }}>!</span>
-              Out of CMYK gamut — colors may shift in print
-            </div>
-          )}
-
-          {/* HSL Sliders */}
-          <div style={STYLES.section}>
-            <div style={STYLES.sectionTitle}>Key Color</div>
-            <HslSlider label="H" value={keyColor.h} min={0} max={360} onChange={setHue} gradient={hueGradient} />
-            <HslSlider label="S" value={keyColor.s} min={0} max={100} onChange={setSaturation} gradient={satGradient} />
-            <HslSlider label="L" value={keyColor.l} min={0} max={100} onChange={setLightness} gradient={litGradient} />
-            <div style={{ marginTop: 8 }}>
-              <HexInput value={keyHex} onChange={setHex} />
-            </div>
-          </div>
-
-          {/* Harmony Mode */}
-          <div style={STYLES.section}>
-            <div style={STYLES.sectionTitle}>Harmony</div>
-            <div style={STYLES.radioGroup}>
-              {Object.entries(HARMONY_MODES).map(([key, mode]) => (
-                <div
-                  key={key}
-                  style={{
-                    ...STYLES.radioOption,
-                    background: harmonyMode === key ? '#27272a' : 'transparent',
-                  }}
-                  onClick={() => setHarmonyMode(key)}
-                >
-                  <div style={{
-                    width: 14, height: 14, borderRadius: '50%',
-                    border: `2px solid ${harmonyMode === key ? '#fafafa' : '#52525b'}`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    {harmonyMode === key && <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#fafafa' }} />}
-                  </div>
-                  <span>{mode.label}</span>
-                  <div style={{ display: 'flex', gap: 3, marginLeft: 'auto' }}>
-                    {[0, ...mode.offsets].map((offset, i) => {
-                      const hue = (keyColor.h + offset + 360) % 360
-                      const rgb = hslToRgb(hue, keyColor.s, keyColor.l)
-                      return <div key={i} style={{ width: 12, height: 12, borderRadius: 3, background: rgbToHex(rgb.r, rgb.g, rgb.b) }} />
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Color Details */}
-          <div style={STYLES.section}>
-            <div style={STYLES.sectionTitle}>Details — {selectedGroup.label}</div>
-            <div style={{ fontSize: 12, color: '#d4d4d8', lineHeight: 1.8, fontFamily: "'SF Mono', 'Fira Code', monospace" }}>
-              <div>HEX: {selectedGroup.hex.toUpperCase()}</div>
-              <div>RGB: {selectedGroup.rgb.r}, {selectedGroup.rgb.g}, {selectedGroup.rgb.b}</div>
-              <div>HSL: {Math.round(selectedGroup.hsl.h)}°, {Math.round(selectedGroup.hsl.s)}%, {Math.round(selectedGroup.hsl.l)}%</div>
-              <div>OKLab L: {rgbToOklab(selectedGroup.rgb.r, selectedGroup.rgb.g, selectedGroup.rgb.b).L.toFixed(3)}</div>
-              {showCmyk && (() => {
-                const cmyk = rgbToCmyk(selectedGroup.rgb.r, selectedGroup.rgb.g, selectedGroup.rgb.b)
-                return <div>CMYK: {cmyk.c}%, {cmyk.m}%, {cmyk.y}%, {cmyk.k}%</div>
-              })()}
-            </div>
-            <ContrastLockPanel
-              colorId={selectedGroup.id}
-              colorHsl={selectedGroup.hsl}
-              contrastLocks={contrastLocks}
-              setContrastLocks={setContrastLocks}
-            />
-          </div>
-
-          {/* CVD Preview */}
-          <CVDPreview rgb={selectedGroup.rgb} />
-        </aside>
+      <div style={S.main}>
+        {/* Sidebar — desktop: always visible; mobile: collapsible */}
+        {(!mobile || sidebarOpen) && (
+          <aside style={S.sidebar}>
+            {sidebarContent}
+          </aside>
+        )}
 
         {/* Main Content */}
-        <main style={STYLES.content}>
-          {/* Panel tabs */}
-          <div style={{ ...STYLES.tabs, maxWidth: 500 }}>
+        <main style={S.content}>
+          <div style={{ ...S.tabs, maxWidth: mobile ? '100%' : 500 }}>
             {[
               { key: 'palette', label: 'Palette' },
               { key: 'contrast', label: 'Contrast' },
@@ -1274,47 +1457,58 @@ export default function HueLab() {
             ].map(t => (
               <button
                 key={t.key}
-                style={{ ...STYLES.tab, ...(activePanel === t.key ? STYLES.tabActive : {}) }}
+                style={{ ...S.tab, ...(activePanel === t.key ? S.tabActive : {}) }}
                 onClick={() => setActivePanel(t.key)}
-              >
-                {t.label}
-              </button>
+              >{t.label}</button>
             ))}
           </div>
 
           {/* Palette Panel */}
           {activePanel === 'palette' && (
             <div>
-              {allPaletteColors.map(group => {
+              {orderedPaletteColors.map((group, idx) => {
                 const isSelected = selectedColor === group.id || (!selectedColor && group.id === 'key')
+                const isDragging = dragIdx === idx
+                const isDragOver = dragOverIdx === idx && dragIdx !== idx
+
                 return (
-                  <div key={group.id} style={STYLES.scaleRow}>
-                    <div style={STYLES.scaleLabel}>
-                      <div
-                        style={{
-                          width: 14, height: 14, borderRadius: 4,
-                          background: group.hex,
-                          border: '1px solid #3f3f46',
-                        }}
+                  <div
+                    key={group.id}
+                    style={{
+                      ...S.scaleRow,
+                      opacity: isDragging ? 0.4 : 1,
+                      borderTop: isDragOver ? '2px solid #60a5fa' : '2px solid transparent',
+                    }}
+                    draggable
+                    onDragStart={e => handleDragStart(e, idx)}
+                    onDragOver={e => handleDragOver(e, idx)}
+                    onDragEnd={handleDragEnd}
+                    onDrop={e => handleDrop(e, idx)}
+                  >
+                    <div style={S.scaleLabel}>
+                      {/* Drag handle */}
+                      <span style={S.dragHandle} title="Drag to reorder">⠿</span>
+                      <div style={{ width: 14, height: 14, borderRadius: 4, background: group.hex, border: '1px solid #3f3f46', flexShrink: 0 }} />
+                      <EditableLabel
+                        value={colorNames[group.id] || group.label}
+                        onChange={name => setColorNames(prev => ({ ...prev, [group.id]: name }))}
+                        style={{ color: isSelected ? '#fafafa' : '#a1a1aa', cursor: 'text' }}
                       />
-                      <span
-                        style={{ cursor: 'pointer', color: isSelected ? '#fafafa' : '#a1a1aa' }}
-                        onClick={() => setSelectedColor(group.id)}
-                      >
-                        {group.label}
-                      </span>
                       {contrastLocks[group.id] && (
-                        <span style={{ ...STYLES.badge, background: '#1e3a5f', color: '#60a5fa' }}>
+                        <span style={{ ...S.badge, background: '#1e3a5f', color: '#60a5fa' }}>
                           {contrastLocks[group.id].target}:1
                         </span>
                       )}
                       {showCmyk && !isApproxInCmykGamut(group.rgb.r, group.rgb.g, group.rgb.b) && (
-                        <span style={{ ...STYLES.badge, background: '#422006', color: '#fbbf24' }}>
-                          Out of gamut
-                        </span>
+                        <span style={{ ...S.badge, background: '#422006', color: '#fbbf24' }}>Out of gamut</span>
                       )}
+                      <span
+                        style={{ marginLeft: 'auto', fontSize: 10, color: '#52525b', cursor: 'pointer', flexShrink: 0 }}
+                        onClick={() => setSelectedColor(group.id)}
+                        title="Select for details"
+                      >details →</span>
                     </div>
-                    <div style={STYLES.scaleSwatches}>
+                    <div style={S.scaleSwatches}>
                       {group.scale.map(swatch => {
                         const lum = relativeLuminance(swatch.rgb.r, swatch.rgb.g, swatch.rgb.b)
                         const textCol = lum > 0.179 ? '#09090b' : '#fafafa'
@@ -1324,7 +1518,7 @@ export default function HueLab() {
                           <div
                             key={swatch.step}
                             style={{
-                              ...STYLES.scaleSwatch,
+                              ...S.scaleSwatch,
                               background: swatch.hex,
                               color: textCol,
                               transform: isHovered ? 'scaleY(1.15)' : 'none',
@@ -1332,14 +1526,12 @@ export default function HueLab() {
                             }}
                             onMouseEnter={() => setHoveredSwatch(`${group.id}-${swatch.step}`)}
                             onMouseLeave={() => setHoveredSwatch(null)}
-                            onClick={() => {
-                              navigator.clipboard.writeText(swatch.hex)
-                            }}
+                            onClick={() => navigator.clipboard.writeText(swatch.hex)}
                             title={`${swatch.hex}\nClick to copy`}
                           >
                             {swatch.step}
                             {isHovered && (
-                              <div style={STYLES.tooltip}>
+                              <div style={S.tooltip}>
                                 {swatch.hex.toUpperCase()}
                                 {showCmyk && (() => {
                                   const cmyk = rgbToCmyk(swatch.rgb.r, swatch.rgb.g, swatch.rgb.b)
@@ -1360,30 +1552,30 @@ export default function HueLab() {
           {/* Contrast Panel */}
           {activePanel === 'contrast' && (
             <div>
-              <div style={{ ...STYLES.sectionTitle, marginBottom: 16 }}>Contrast Ratio Matrix</div>
-              <ContrastMatrix colors={matrixColors} />
-
+              <div style={{ ...S.sectionTitle, marginBottom: 16 }}>Contrast Ratio Matrix</div>
+              <ContrastMatrix colors={matrixColors} S={S} />
               <div style={{ marginTop: 28 }}>
-                <div style={STYLES.sectionTitle}>Quick Check</div>
-                <div style={STYLES.contrastGrid}>
-                  {allPaletteColors.map(group => {
+                <div style={S.sectionTitle}>Quick Check</div>
+                <div style={S.contrastGrid}>
+                  {orderedPaletteColors.map(group => {
                     const onWhite = contrastRatio(relativeLuminance(group.rgb.r, group.rgb.g, group.rgb.b), 1)
                     const onBlack = contrastRatio(relativeLuminance(group.rgb.r, group.rgb.g, group.rgb.b), 0)
                     const whiteLevel = wcagLevel(onWhite)
                     const blackLevel = wcagLevel(onBlack)
+                    const displayName = colorNames[group.id] || group.label
                     return (
                       <React.Fragment key={group.id}>
-                        <div style={{ ...STYLES.contrastCell, background: '#ffffff', color: group.hex }}>
-                          <div style={{ fontWeight: 700, fontSize: 14 }}>{group.label}</div>
+                        <div style={{ ...S.contrastCell, background: '#ffffff', color: group.hex }}>
+                          <div style={{ fontWeight: 700, fontSize: 14 }}>{displayName}</div>
                           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                            <span style={{ ...STYLES.badge, background: wcagLevelColor(whiteLevel), color: '#09090b' }}>{whiteLevel}</span>
+                            <span style={{ ...S.badge, background: wcagLevelColor(whiteLevel), color: '#09090b' }}>{whiteLevel}</span>
                             <span style={{ color: '#71717a', fontSize: 11 }}>{onWhite.toFixed(1)}:1</span>
                           </div>
                         </div>
-                        <div style={{ ...STYLES.contrastCell, background: '#09090b', color: group.hex, border: '1px solid #27272a' }}>
-                          <div style={{ fontWeight: 700, fontSize: 14 }}>{group.label}</div>
+                        <div style={{ ...S.contrastCell, background: '#09090b', color: group.hex, border: '1px solid #27272a' }}>
+                          <div style={{ fontWeight: 700, fontSize: 14 }}>{displayName}</div>
                           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                            <span style={{ ...STYLES.badge, background: wcagLevelColor(blackLevel), color: '#09090b' }}>{blackLevel}</span>
+                            <span style={{ ...S.badge, background: wcagLevelColor(blackLevel), color: '#09090b' }}>{blackLevel}</span>
                             <span style={{ color: '#71717a', fontSize: 11 }}>{onBlack.toFixed(1)}:1</span>
                           </div>
                         </div>
@@ -1397,7 +1589,7 @@ export default function HueLab() {
 
           {/* Export Panel */}
           {activePanel === 'export' && (
-            <ExportPanel allColors={allPaletteColors} keyColor={keyColor} />
+            <ExportPanel allColors={orderedPaletteColors} S={S} />
           )}
         </main>
       </div>
