@@ -258,7 +258,7 @@ function deltaE(lab1, lab2) {
 }
 
 // ============================================================================
-// HARMONY MODES
+// HARMONY MODES (OKLCH perceptual hue rotation)
 // ============================================================================
 
 const HARMONY_MODES = {
@@ -270,16 +270,55 @@ const HARMONY_MODES = {
   monochromatic: { label: 'Monochromatic', offsets: [] },
 }
 
+// Check if an OKLCH color maps to valid sRGB without clipping
+function oklchInGamut(L, C, h) {
+  const lab = oklchToOklab(L, C, h)
+  const l_ = lab.L + 0.3963377774 * lab.a + 0.2158037573 * lab.b
+  const m_ = lab.L - 0.1055613458 * lab.a - 0.0638541728 * lab.b
+  const s_ = lab.L - 0.0894841775 * lab.a - 1.2914855480 * lab.b
+  const l = l_ * l_ * l_, m = m_ * m_ * m_, s = s_ * s_ * s_
+  const lr = +4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s
+  const lg = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s
+  const lb = -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s
+  return lr >= -0.001 && lr <= 1.001 && lg >= -0.001 && lg <= 1.001 && lb >= -0.001 && lb <= 1.001
+}
+
 function getHarmonyColors(h, s, l, mode) {
   const config = HARMONY_MODES[mode]
   if (!config) return []
-  return config.offsets.map((offset, i) => ({
-    h: (h + offset + 360) % 360,
-    s,
-    l,
-    label: `${config.label} ${i + 1}`,
-    offset,
-  }))
+
+  // Convert key color to OKLCH for perceptually uniform hue rotation
+  const rgb = hslToRgb(h, s, l)
+  const lab = rgbToOklab(rgb.r, rgb.g, rgb.b)
+  const lch = oklabToOklch(lab.L, lab.a, lab.b)
+
+  return config.offsets.map((offset, i) => {
+    const newHue = (lch.h + offset + 360) % 360
+
+    // Gamut map: binary search for max chroma that stays in sRGB
+    let C = lch.C
+    if (!oklchInGamut(lch.L, C, newHue)) {
+      let lo = 0, hi = C
+      for (let j = 0; j < 20; j++) {
+        const mid = (lo + hi) / 2
+        if (oklchInGamut(lch.L, mid, newHue)) lo = mid
+        else hi = mid
+      }
+      C = lo
+    }
+
+    const newLab = oklchToOklab(lch.L, C, newHue)
+    const newRgb = oklabToRgb(newLab.L, newLab.a, newLab.b)
+    const hsl = rgbToHsl(newRgb.r, newRgb.g, newRgb.b)
+
+    return {
+      h: hsl.h,
+      s: hsl.s,
+      l: hsl.l,
+      label: `${config.label} ${i + 1}`,
+      offset,
+    }
+  })
 }
 
 // ============================================================================
