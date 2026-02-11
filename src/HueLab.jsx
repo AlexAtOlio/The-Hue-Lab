@@ -1490,7 +1490,129 @@ export default function HueLab() {
       {/* Color Details */}
       <div style={S.section}>
         <div style={S.sectionTitle}>Details — {colorNames[selectedGroup.id] || selectedGroup.label}</div>
-        <div style={{ fontSize: 12, color: '#d4d4d8', lineHeight: 1.8, fontFamily: "'SF Mono', 'Fira Code', monospace" }}>
+
+        {/* Color preview */}
+        <div style={{ ...S.colorPreview, height: 48, background: selectedGroup.hex }}>
+          <div style={{
+            position: 'absolute', bottom: 6, left: 10, right: 10,
+            display: 'flex', justifyContent: 'space-between',
+            fontSize: 10, fontWeight: 600,
+            color: relativeLuminance(selectedGroup.rgb.r, selectedGroup.rgb.g, selectedGroup.rgb.b) > 0.179 ? '#09090b' : '#fafafa',
+          }}>
+            <span>{selectedGroup.hex.toUpperCase()}</span>
+          </div>
+        </div>
+
+        {/* H/S/L override sliders */}
+        {(() => {
+          const isKey = selectedGroup.id === 'key'
+          const isUnlinked = !!selectedGroup.unlinked
+          const hsl = selectedGroup.hsl
+          const hasLock = !!contrastLocks[selectedGroup.id]
+
+          const updateColor = (prop, val) => {
+            if (isKey) {
+              setKeyColor(prev => ({ ...prev, [prop]: val }))
+            } else if (isUnlinked) {
+              setUnlinkedColors(prev => ({
+                ...prev,
+                [selectedGroup.id]: { ...prev[selectedGroup.id], [prop]: val }
+              }))
+            } else {
+              setColorOverrides(prev => ({
+                ...prev,
+                [selectedGroup.id]: { ...(prev[selectedGroup.id] || {}), [prop]: val }
+              }))
+            }
+          }
+
+          const hGrad = (() => {
+            const stops = Array.from({ length: 13 }, (_, i) => {
+              const h = (i / 12) * 360
+              const rgb = hslToRgb(h, hsl.s, hsl.l)
+              return rgbToHex(rgb.r, rgb.g, rgb.b)
+            })
+            return `linear-gradient(to right, ${stops.join(', ')})`
+          })()
+          const sGrad = (() => {
+            const lo = hslToRgb(hsl.h, 0, hsl.l)
+            const hi = hslToRgb(hsl.h, 100, hsl.l)
+            return `linear-gradient(to right, ${rgbToHex(lo.r, lo.g, lo.b)}, ${rgbToHex(hi.r, hi.g, hi.b)})`
+          })()
+          const lGrad = (() => {
+            const lo = hslToRgb(hsl.h, hsl.s, 0)
+            const mid = hslToRgb(hsl.h, hsl.s, 50)
+            const hi = hslToRgb(hsl.h, hsl.s, 100)
+            return `linear-gradient(to right, ${rgbToHex(lo.r, lo.g, lo.b)}, ${rgbToHex(mid.r, mid.g, mid.b)}, ${rgbToHex(hi.r, hi.g, hi.b)})`
+          })()
+
+          return (
+            <>
+              <div style={{ marginTop: 8 }}>
+                <HslSlider label="H" value={hsl.h} min={0} max={360} onChange={v => updateColor('h', v)} gradient={hGrad} S={S} />
+                <HslSlider label="S" value={hsl.s} min={0} max={100} onChange={v => updateColor('s', v)} gradient={sGrad} S={S} />
+                {hasLock ? (
+                  <div style={S.sliderGroup}>
+                    <div style={S.sliderLabel}>
+                      <span>L</span>
+                      <span style={{ color: '#60a5fa' }}>{Math.round(hsl.l)}% (contrast locked)</span>
+                    </div>
+                    <input type="range" min={0} max={100} value={Math.round(hsl.l)} disabled
+                      style={{ ...S.slider, background: lGrad, opacity: 0.5, cursor: 'not-allowed' }} />
+                  </div>
+                ) : (
+                  <HslSlider label="L" value={hsl.l} min={0} max={100} onChange={v => updateColor('l', v)} gradient={lGrad} S={S} />
+                )}
+              </div>
+
+              {!isKey && (
+                <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                  <button
+                    style={{ ...S.btn, flex: 1, fontSize: 10, ...(isUnlinked ? S.btnActive : {}) }}
+                    onClick={() => {
+                      if (isUnlinked) {
+                        setUnlinkedColors(prev => {
+                          const next = { ...prev }
+                          delete next[selectedGroup.id]
+                          return next
+                        })
+                        setColorOverrides(prev => {
+                          const next = { ...prev }
+                          delete next[selectedGroup.id]
+                          return next
+                        })
+                      } else {
+                        setUnlinkedColors(prev => ({
+                          ...prev,
+                          [selectedGroup.id]: { h: hsl.h, s: hsl.s, l: hsl.l, label: selectedGroup.label }
+                        }))
+                      }
+                    }}
+                  >
+                    {isUnlinked ? 'Relink' : 'Unlink'}
+                  </button>
+                  {!isUnlinked && colorOverrides[selectedGroup.id] && (
+                    <button
+                      style={{ ...S.btn, flex: 1, fontSize: 10 }}
+                      onClick={() => {
+                        setColorOverrides(prev => {
+                          const next = { ...prev }
+                          delete next[selectedGroup.id]
+                          return next
+                        })
+                      }}
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
+              )}
+            </>
+          )
+        })()}
+
+        {/* Read-only values */}
+        <div style={{ fontSize: 12, color: '#d4d4d8', lineHeight: 1.8, fontFamily: "'SF Mono', 'Fira Code', monospace", marginTop: 8 }}>
           <div>HEX: {selectedGroup.hex.toUpperCase()}</div>
           <div>RGB: {selectedGroup.rgb.r}, {selectedGroup.rgb.g}, {selectedGroup.rgb.b}</div>
           <div>HSL: {Math.round(selectedGroup.hsl.h)}°, {Math.round(selectedGroup.hsl.s)}%, {Math.round(selectedGroup.hsl.l)}%</div>
