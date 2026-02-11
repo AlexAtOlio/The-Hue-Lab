@@ -181,6 +181,72 @@ function solveForContrast(h, s, targetRatio, bgRgb) {
 }
 
 // ============================================================================
+// APCA CONTRAST (WCAG 3.0 draft — APCA-W3 0.1.9)
+// ============================================================================
+
+// Peceptual luminance (Y) using APCA's sRGB coefficients
+function apcaLuminance(r, g, b) {
+  // Piecewise sRGB linearization with APCA exponent (2.4)
+  const f = (v) => { v /= 255; return v <= 0.022 ? v + Math.pow(0.022 - v, 1.414) : Math.pow(v, 2.4) }
+  return 0.2126729 * f(r) + 0.7151522 * f(g) + 0.0721750 * f(b)
+}
+
+// Returns Lc (lightness contrast) value. Polarity-aware:
+//   positive Lc = light text on dark background
+//   negative Lc = dark text on light background
+// Magnitude is what matters for thresholds.
+function apcaContrast(fgRgb, bgRgb) {
+  const txtY = apcaLuminance(fgRgb.r, fgRgb.g, fgRgb.b)
+  const bgY = apcaLuminance(bgRgb.r, bgRgb.g, bgRgb.b)
+
+  // Clamp to black
+  const tY = txtY > 0.022 ? txtY : txtY + Math.pow(0.022 - txtY, 1.414)
+  const bY = bgY > 0.022 ? bgY : bgY + Math.pow(0.022 - bgY, 1.414)
+
+  // SAPC power-curve constants
+  const normBg = 0.56, normTxt = 0.57
+  const revBg = 0.65, revTxt = 0.62
+  const blkThrs = 0.022, blkClmp = 1.414
+  const scaleBoW = 1.14, scaleWoB = 1.14
+  const loBoWoff = 0.027, loWoBoff = 0.027
+  const loClip = 0.1
+
+  let Lc = 0
+
+  if (bY > tY) {
+    // "Normal" polarity: dark text on light background
+    const SAPC = (Math.pow(bY, normBg) - Math.pow(tY, normTxt)) * scaleBoW
+    Lc = SAPC < loClip ? 0 : SAPC - loBoWoff
+  } else {
+    // "Reverse" polarity: light text on dark background
+    const SAPC = (Math.pow(bY, revBg) - Math.pow(tY, revTxt)) * scaleWoB
+    Lc = SAPC > -loClip ? 0 : SAPC + loWoBoff
+  }
+
+  return Lc * 100
+}
+
+// APCA "Bronze" conformance levels for body text (~16px)
+function apcaLevel(lc) {
+  const abs = Math.abs(lc)
+  if (abs >= 90) return 'Preferred'
+  if (abs >= 75) return 'Body Text'
+  if (abs >= 60) return 'Large Text'
+  if (abs >= 45) return 'Non-Text'
+  if (abs >= 30) return 'Spot/Icon'
+  return 'Fail'
+}
+
+function apcaLevelColor(level) {
+  if (level === 'Preferred') return '#22c55e'
+  if (level === 'Body Text') return '#86efac'
+  if (level === 'Large Text') return '#60a5fa'
+  if (level === 'Non-Text') return '#fbbf24'
+  if (level === 'Spot/Icon') return '#fb923c'
+  return '#ef4444'
+}
+
+// ============================================================================
 // DELTA E (OKLab)
 // ============================================================================
 
@@ -885,10 +951,21 @@ function ContrastLockPanel({ colorId, colorHsl, contrastLocks, setContrastLocks,
       <div style={S.sectionTitle}>Contrast Lock</div>
       {lock ? (
         <div>
-          <div style={{ fontSize: 12, marginBottom: 8, color: '#d4d4d8' }}>
+          <div style={{ fontSize: 12, marginBottom: 4, color: '#d4d4d8' }}>
             Locked to <strong>{lock.target}:1</strong> on <strong>{lock.bg}</strong>
             {' → '}L = {Math.round(lock.solvedL)}%
           </div>
+          {(() => {
+            const solvedRgb = hslToRgb(colorHsl.h, colorHsl.s, lock.solvedL)
+            const lc = apcaContrast(solvedRgb, lock.bgRgb)
+            const lvl = apcaLevel(lc)
+            return (
+              <div style={{ fontSize: 11, marginBottom: 8, color: '#a1a1aa' }}>
+                APCA Lc {Math.round(lc)}{' '}
+                <span style={{ color: apcaLevelColor(lvl), fontWeight: 600 }}>{lvl}</span>
+              </div>
+            )
+          })()}
           <button style={{ ...S.btn, ...S.btnSmall }} onClick={removeLock}>Remove Lock</button>
         </div>
       ) : (
@@ -1027,6 +1104,8 @@ function ContrastMatrix({ colors, S }) {
               {all.map(bg => {
                 const ratio = contrastRatio(fg.lum, bg.lum)
                 const level = wcagLevel(ratio)
+                const lc = apcaContrast(fg.rgb, bg.rgb)
+                const aLvl = apcaLevel(lc)
                 return (
                   <td key={bg.label} style={{ padding: 4, textAlign: 'center' }}>
                     {fg.label === bg.label ? (
@@ -1035,10 +1114,11 @@ function ContrastMatrix({ colors, S }) {
                       <div style={{
                         background: bg.hex, color: fg.hex, borderRadius: 4,
                         padding: '4px 6px', fontWeight: 700, fontSize: 10,
-                        border: '1px solid #3f3f46', lineHeight: 1.3,
+                        border: '1px solid #3f3f46', lineHeight: 1.4,
                       }}>
                         {ratio.toFixed(1)}<br />
-                        <span style={{ color: wcagLevelColor(level), fontSize: 9 }}>{level}</span>
+                        <span style={{ color: wcagLevelColor(level), fontSize: 9 }}>{level}</span><br />
+                        <span style={{ fontSize: 8, opacity: 0.85, color: apcaLevelColor(aLvl) }}>Lc {Math.round(lc)}</span>
                       </div>
                     )}
                   </td>
@@ -1558,25 +1638,38 @@ export default function HueLab() {
                 <div style={S.sectionTitle}>Quick Check</div>
                 <div style={S.contrastGrid}>
                   {orderedPaletteColors.map(group => {
-                    const onWhite = contrastRatio(relativeLuminance(group.rgb.r, group.rgb.g, group.rgb.b), 1)
-                    const onBlack = contrastRatio(relativeLuminance(group.rgb.r, group.rgb.g, group.rgb.b), 0)
+                    const fgLum = relativeLuminance(group.rgb.r, group.rgb.g, group.rgb.b)
+                    const onWhite = contrastRatio(fgLum, 1)
+                    const onBlack = contrastRatio(fgLum, 0)
                     const whiteLevel = wcagLevel(onWhite)
                     const blackLevel = wcagLevel(onBlack)
+                    const lcOnWhite = apcaContrast(group.rgb, { r: 255, g: 255, b: 255 })
+                    const lcOnBlack = apcaContrast(group.rgb, { r: 0, g: 0, b: 0 })
+                    const aLvlWhite = apcaLevel(lcOnWhite)
+                    const aLvlBlack = apcaLevel(lcOnBlack)
                     const displayName = colorNames[group.id] || group.label
                     return (
                       <React.Fragment key={group.id}>
                         <div style={{ ...S.contrastCell, background: '#ffffff', color: group.hex }}>
                           <div style={{ fontWeight: 700, fontSize: 14 }}>{displayName}</div>
-                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                             <span style={{ ...S.badge, background: wcagLevelColor(whiteLevel), color: '#09090b' }}>{whiteLevel}</span>
                             <span style={{ color: '#71717a', fontSize: 11 }}>{onWhite.toFixed(1)}:1</span>
+                          </div>
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
+                            <span style={{ ...S.badge, background: apcaLevelColor(aLvlWhite), color: '#09090b' }}>APCA</span>
+                            <span style={{ color: '#71717a', fontSize: 11 }}>Lc {Math.round(lcOnWhite)}</span>
                           </div>
                         </div>
                         <div style={{ ...S.contrastCell, background: '#09090b', color: group.hex, border: '1px solid #27272a' }}>
                           <div style={{ fontWeight: 700, fontSize: 14 }}>{displayName}</div>
-                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                             <span style={{ ...S.badge, background: wcagLevelColor(blackLevel), color: '#09090b' }}>{blackLevel}</span>
                             <span style={{ color: '#71717a', fontSize: 11 }}>{onBlack.toFixed(1)}:1</span>
+                          </div>
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
+                            <span style={{ ...S.badge, background: apcaLevelColor(aLvlBlack), color: '#09090b' }}>APCA</span>
+                            <span style={{ color: '#71717a', fontSize: 11 }}>Lc {Math.round(lcOnBlack)}</span>
                           </div>
                         </div>
                       </React.Fragment>
